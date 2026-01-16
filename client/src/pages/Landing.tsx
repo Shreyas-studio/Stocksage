@@ -18,7 +18,7 @@ export default function Landing() {
               onClick={() => window.location.href = '/api/login'}
               data-testid="button-login"
             >
-              Sign In
+              Sign In with Google
             </Button>
           </div>
         </div>
@@ -42,7 +42,7 @@ export default function Landing() {
                 className="text-base sm:text-lg px-6 sm:px-8"
                 data-testid="button-get-started"
               >
-                Get Started Free
+                Sign In with Google
               </Button>
               <Button 
                 size="lg" 
@@ -111,7 +111,7 @@ export default function Landing() {
               className="text-base sm:text-lg px-6 sm:px-8"
               data-testid="button-cta-signup"
             >
-              Start Tracking Now
+              Sign In with Google
             </Button>
           </div>
         </section>
