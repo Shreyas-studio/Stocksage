@@ -9,9 +9,10 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 
-if (!process.env.REPLIT_DOMAINS) {
-  throw new Error("Environment variable REPLIT_DOMAINS not provided");
-}
+// Check if Replit auth is configured (optional for Railway deployment)
+const isReplitAuthConfigured = () => {
+  return !!(process.env.REPLIT_DOMAINS && process.env.REPL_ID);
+};
 
 const getOidcConfig = memoize(
   async () => {
@@ -73,6 +74,15 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  // Only set up Replit auth if configured (for Railway, this will be skipped)
+  if (!isReplitAuthConfigured()) {
+    console.log("Replit auth not configured - running without Replit authentication");
+    // Set up basic passport serialization even without Replit
+    passport.serializeUser((user: Express.User, cb) => cb(null, user));
+    passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+    return;
+  }
+
   const config = await getOidcConfig();
 
   const verify: VerifyFunction = async (
@@ -129,6 +139,17 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // If Replit auth is not configured (e.g., on Railway), allow requests through
+  // Note: This means the app will work but without authentication
+  // For production, you should implement proper authentication
+  if (!isReplitAuthConfigured()) {
+    // Create a mock user for Railway deployment (you may want to implement proper auth later)
+    if (!req.user) {
+      (req as any).user = { claims: { sub: 'railway-user-1' } };
+    }
+    return next();
+  }
+
   const user = req.user as any;
 
   if (!req.isAuthenticated() || !user.expires_at) {
