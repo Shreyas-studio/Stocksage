@@ -47,7 +47,9 @@ export default function OptionsRecommendations() {
   });
 
   const handleGetRecommendations = () => {
-    refetch();
+    refetch().then(() => {
+      queryClient.invalidateQueries({ queryKey: ['/api/analysis/history'] });
+    });
   };
 
   const handleAddOption = async (rec: OptionRecommendation) => {
