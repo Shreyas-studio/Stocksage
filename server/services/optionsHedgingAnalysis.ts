@@ -3,8 +3,10 @@ import type { Stock, Option } from "@shared/schema";
 
 // This uses Replit's AI Integrations service for OpenAI-compatible API access
 const openai = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL && {
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  }),
 });
 
 interface HedgingRecommendation {
