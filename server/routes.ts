@@ -12,10 +12,9 @@ import { generateOptionsRecommendations } from "./services/optionsRecommendation
 import { setupAuth, isAuthenticated } from "./replitAuth";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Replit Auth: Setup authentication
   await setupAuth(app);
 
-  // Replit Auth: Get authenticated user
+  // Get authenticated user
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
