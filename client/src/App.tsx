@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -8,26 +8,32 @@ import Dashboard from "@/pages/Dashboard";
 import Landing from "@/pages/Landing";
 import NotFound from "@/pages/not-found";
 
-// Replit Auth: Router with authentication
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
-  // Show landing page while loading or not authenticated
+  // While loading or not authenticated: show Landing at "/", redirect any other path to "/"
   if (isLoading || !isAuthenticated) {
     return (
       <Switch>
         <Route path="/" component={Landing} />
-        <Route component={NotFound} />
+        <Route path="/dashboard" component={Landing} />
+        <Route path="/callback" component={Landing} />
+        <Route path="/auth/callback" component={Landing} />
+        <Route>
+          <Redirect to="/" replace />
+        </Route>
       </Switch>
     );
   }
 
-  // Show dashboard for authenticated users (support both / and /dashboard so OAuth redirects work)
+  // Authenticated: show Dashboard at "/" and "/dashboard", redirect any other path to "/"
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/dashboard" component={Dashboard} />
-      <Route component={NotFound} />
+      <Route>
+        <Redirect to="/" replace />
+      </Route>
     </Switch>
   );
 }
@@ -42,3 +48,5 @@ function App() {
     </QueryClientProvider>
   );
 }
+
+export default App;
