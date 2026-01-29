@@ -22,10 +22,11 @@ function Router() {
     );
   }
 
-  // Show dashboard for authenticated users
+  // Show dashboard for authenticated users (support both / and /dashboard so OAuth redirects work)
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/dashboard" component={Dashboard} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -41,5 +42,3 @@ function App() {
     </QueryClientProvider>
   );
 }
-
-export default App;
