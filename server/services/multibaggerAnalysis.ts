@@ -1,6 +1,37 @@
 import OpenAI from 'openai';
 import { getStockPrice } from './stockPrice';
 
+const PRICE_CONCURRENCY = 3;
+const PRICE_BATCH_DELAY_MS = 600;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchPricesInBatches<T>(
+  items: T[],
+  getSymbol: (item: T) => string,
+  buildResult: (item: T, price: number) => MultibaggerRecommendation | null
+): Promise<MultibaggerRecommendation[]> {
+  const out: MultibaggerRecommendation[] = [];
+  for (let i = 0; i < items.length; i += PRICE_CONCURRENCY) {
+    const chunk = items.slice(i, i + PRICE_CONCURRENCY);
+    const chunkResults = await Promise.all(
+      chunk.map(async (rec) => {
+        const quote = await getStockPrice(getSymbol(rec));
+        if (!quote || quote.price <= 0) {
+          console.warn(`[MULTIBAGGER] No valid price for ${getSymbol(rec)}`);
+          return null;
+        }
+        return buildResult(rec, quote.price);
+      })
+    );
+    for (const r of chunkResults) if (r) out.push(r);
+    if (i + PRICE_CONCURRENCY < items.length) await delay(PRICE_BATCH_DELAY_MS);
+  }
+  return out;
+}
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL && {
@@ -125,61 +156,44 @@ Focus on quality Indian stocks with strong fundamentals and clear growth catalys
       return [];
     }
     
-    // Fetch real-time prices and calculate targets based on growth multiple
-    const recommendationsWithPrices = await Promise.all(
-      validatedRecommendations.map(async (rec) => {
-        try {
-          const quote = await getStockPrice(rec.symbol);
-          
-          if (!quote || quote.price <= 0) {
-            console.warn(`[MULTIBAGGER] No valid price for ${rec.symbol}`);
-            return null;
-          }
-          
-          // Parse and validate growth multiple
-          const parseMultiple = (value: any): number => {
-            if (typeof value === 'number') return value;
-            if (typeof value === 'string') {
-              const cleaned = value.replace('x', '').trim();
-              const parsed = parseFloat(cleaned);
-              return isNaN(parsed) ? 0 : parsed;
-            }
-            return 0;
-          };
-          
-          const multiple = parseMultiple(rec.targetMultiple);
-          
-          // Validate multiple range (reasonable for 5-10 year multibaggers)
-          if (multiple < 2 || multiple > 20) {
-            console.warn(`[MULTIBAGGER] Invalid growth multiple for ${rec.symbol}: ${multiple}x`);
-            return null;
-          }
-          
-          const currentPrice = quote.price;
-          // Target = current price × growth multiple
-          const targetPrice5Year = currentPrice * multiple;
-          
-          return {
-            symbol: rec.symbol,
-            companyName: rec.companyName,
-            sector: rec.sector,
-            currentPrice,
-            targetPrice5Year,
-            expectedReturn: rec.expectedReturn,
-            growthDrivers: rec.growthDrivers,
-            risks: rec.risks,
-            investmentThesis: rec.investmentThesis,
-            confidenceLevel: rec.confidenceLevel
-          } as MultibaggerRecommendation;
-        } catch (error) {
-          console.error(`Error fetching price for ${rec.symbol}:`, error);
+    // Parse and validate growth multiple
+    const parseMultiple = (value: unknown): number => {
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        const cleaned = value.replace('x', '').trim();
+        const parsed = parseFloat(cleaned);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+      return 0;
+    };
+
+    // Fetch real-time prices in small batches to avoid ETIMEDOUT / rate limits
+    const recommendationsWithPrices = await fetchPricesInBatches(
+      validatedRecommendations,
+      (rec) => rec.symbol,
+      (rec, currentPrice) => {
+        const multiple = parseMultiple(rec.targetMultiple);
+        if (multiple < 2 || multiple > 20) {
+          console.warn(`[MULTIBAGGER] Invalid growth multiple for ${rec.symbol}: ${multiple}x`);
           return null;
         }
-      })
+        const targetPrice5Year = currentPrice * multiple;
+        return {
+          symbol: rec.symbol,
+          companyName: rec.companyName,
+          sector: rec.sector,
+          currentPrice,
+          targetPrice5Year,
+          expectedReturn: rec.expectedReturn,
+          growthDrivers: rec.growthDrivers,
+          risks: rec.risks,
+          investmentThesis: rec.investmentThesis,
+          confidenceLevel: rec.confidenceLevel,
+        } as MultibaggerRecommendation;
+      }
     );
-    
-    // Filter out null results (where we couldn't get prices or invalid multiples)
-    return recommendationsWithPrices.filter((rec): rec is MultibaggerRecommendation => rec !== null);
+
+    return recommendationsWithPrices;
   } catch (error) {
     console.error('Error analyzing multibaggers:', error);
     return [];
