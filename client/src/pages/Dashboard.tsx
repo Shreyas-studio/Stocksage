@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import PortfolioHeader from "@/components/PortfolioHeader";
 import SummaryCard from "@/components/SummaryCard";
 import StockCard, { AIAction } from "@/components/StockCard";
@@ -11,14 +11,15 @@ import SwingTradeCard from "@/components/SwingTradeCard";
 import MultibaggerCard from "@/components/MultibaggerCard";
 import OptionsTrading from "@/components/OptionsTrading";
 import OptionsRecommendations from "@/components/OptionsRecommendations";
-import { Wallet, TrendingUp, Bell, Zap, Target, Shield } from "lucide-react";
+import AnalysisHistory from "@/components/AnalysisHistory";
+import { Wallet, TrendingUp, Bell, Zap, Target, Shield, History } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useStocks, useAddStock, useDeleteStock, useAnalyzePortfolio } from "@/hooks/usePortfolio";
 import { useAlerts } from "@/hooks/useAlerts";
-import { useSwingTradeAnalysis, useMultibaggerAnalysis, type SwingTradeRecommendation, type MultibaggerRecommendation } from "@/hooks/useAnalysis";
+import { useSwingTradeAnalysis, useMultibaggerAnalysis, useLastSwingTradeAnalysis, useLastMultibaggerAnalysis, type SwingTradeRecommendation, type MultibaggerRecommendation } from "@/hooks/useAnalysis";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -33,9 +34,23 @@ export default function Dashboard() {
   const analyzeMutation = useAnalyzePortfolio();
   const swingTradeMutation = useSwingTradeAnalysis();
   const multibaggerMutation = useMultibaggerAnalysis();
-  
+  const lastSwingTrade = useLastSwingTradeAnalysis();
+  const lastMultibagger = useLastMultibaggerAnalysis();
+
   const [swingTradeRecs, setSwingTradeRecs] = useState<SwingTradeRecommendation[]>([]);
   const [multibaggerRecs, setMultibaggerRecs] = useState<MultibaggerRecommendation[]>([]);
+
+  // Load last saved suggestions when dashboard mounts (e.g. after login)
+  useEffect(() => {
+    if (lastSwingTrade.data && lastSwingTrade.data.length > 0) {
+      setSwingTradeRecs(lastSwingTrade.data);
+    }
+  }, [lastSwingTrade.data]);
+  useEffect(() => {
+    if (lastMultibagger.data && lastMultibagger.data.length > 0) {
+      setMultibaggerRecs(lastMultibagger.data);
+    }
+  }, [lastMultibagger.data]);
   const [swingBudget, setSwingBudget] = useState<string>("all");
   const [multibaggerBudget, setMultibaggerBudget] = useState<string>("all");
 
@@ -305,6 +320,10 @@ export default function Dashboard() {
                       <Shield className="h-4 w-4 mr-2" />
                       Options
                     </TabsTrigger>
+                    <TabsTrigger value="history" data-testid="tab-history">
+                      <History className="h-4 w-4 mr-2" />
+                      History
+                    </TabsTrigger>
                   </TabsList>
                 </div>
 
@@ -423,6 +442,10 @@ export default function Dashboard() {
                       <OptionsRecommendations />
                     </TabsContent>
                   </Tabs>
+                </TabsContent>
+
+                <TabsContent value="history" className="space-y-4">
+                  <AnalysisHistory />
                 </TabsContent>
               </Tabs>
             </div>
