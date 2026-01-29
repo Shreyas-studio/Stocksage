@@ -24,19 +24,43 @@ export interface IStorage {
   createOption(option: InsertOptionWithUserId): Promise<Option>;
   updateOption(id: string, updates: Partial<Option>): Promise<Option | undefined>;
   deleteOption(id: string): Promise<boolean>;
+
+  saveAnalysisResult(userId: string, type: string, data: unknown): Promise<void>;
+  getLastAnalysisResult(userId: string, type: string): Promise<unknown>;
+
+  addAnalysisHistoryEntry(userId: string, type: string, data: unknown): Promise<AnalysisHistoryEntry>;
+  getAnalysisHistory(userId: string, options?: { type?: string; limit?: number }): Promise<AnalysisHistoryEntry[]>;
 }
+
+export interface AnalysisHistoryEntry {
+  id: string;
+  type: string;
+  data: unknown;
+  createdAt: Date;
+}
+
+interface SavedAnalysis {
+  data: unknown;
+  savedAt: Date;
+}
+
+const MAX_HISTORY_PER_USER = 100;
 
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
   private stocks: Map<string, Stock>;
   private alerts: Map<string, Alert>;
   private options: Map<string, Option>;
+  private analysisResults: Map<string, SavedAnalysis>;
+  private analysisHistory: Map<string, AnalysisHistoryEntry[]>;
 
   constructor() {
     this.users = new Map();
     this.stocks = new Map();
     this.alerts = new Map();
     this.options = new Map();
+    this.analysisResults = new Map();
+    this.analysisHistory = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -198,6 +222,41 @@ export class MemStorage implements IStorage {
 
   async deleteOption(id: string): Promise<boolean> {
     return this.options.delete(id);
+  }
+
+  async saveAnalysisResult(userId: string, type: string, data: unknown): Promise<void> {
+    this.analysisResults.set(`${userId}:${type}`, { data, savedAt: new Date() });
+  }
+
+  async getLastAnalysisResult(userId: string, type: string): Promise<unknown> {
+    const saved = this.analysisResults.get(`${userId}:${type}`);
+    return saved?.data ?? null;
+  }
+
+  async addAnalysisHistoryEntry(userId: string, type: string, data: unknown): Promise<AnalysisHistoryEntry> {
+    const entry: AnalysisHistoryEntry = {
+      id: randomUUID(),
+      type,
+      data,
+      createdAt: new Date(),
+    };
+    let list = this.analysisHistory.get(userId);
+    if (!list) {
+      list = [];
+      this.analysisHistory.set(userId, list);
+    }
+    list.unshift(entry);
+    if (list.length > MAX_HISTORY_PER_USER) {
+      list.length = MAX_HISTORY_PER_USER;
+    }
+    return entry;
+  }
+
+  async getAnalysisHistory(userId: string, options?: { type?: string; limit?: number }): Promise<AnalysisHistoryEntry[]> {
+    const list = this.analysisHistory.get(userId) ?? [];
+    let out = options?.type ? list.filter((e) => e.type === options.type) : [...list];
+    const limit = options?.limit ?? 50;
+    return out.slice(0, limit);
   }
 }
 
