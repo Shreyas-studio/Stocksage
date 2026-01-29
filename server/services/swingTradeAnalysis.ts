@@ -1,6 +1,13 @@
 import OpenAI from 'openai';
 import { getStockPrice } from './stockPrice';
 
+const PRICE_CONCURRENCY = 3;
+const PRICE_BATCH_DELAY_MS = 600;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL && {
@@ -117,45 +124,38 @@ Focus on stocks with HIGH volatility and strong momentum that are at good techni
       return [];
     }
     
-    // Fetch real-time prices and calculate entry/target/stop based on current price
-    const recommendationsWithPrices = await Promise.all(
-      validatedRecommendations.map(async (rec) => {
-        try {
+    // Parse and validate percentage values (handle strings like "8%" or "8")
+    const parsePercent = (value: unknown): number => {
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        const cleaned = value.replace('%', '').trim();
+        const parsed = parseFloat(cleaned);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+      return 0;
+    };
+
+    // Fetch real-time prices in small batches to avoid ETIMEDOUT / rate limits
+    const out: SwingTradeRecommendation[] = [];
+    for (let i = 0; i < validatedRecommendations.length; i += PRICE_CONCURRENCY) {
+      const chunk = validatedRecommendations.slice(i, i + PRICE_CONCURRENCY);
+      const chunkResults = await Promise.all(
+        chunk.map(async (rec) => {
           const quote = await getStockPrice(rec.symbol);
-          
           if (!quote || quote.price <= 0) {
             console.warn(`[SWING TRADE] No valid price for ${rec.symbol}`);
             return null;
           }
-          
-          // Parse and validate percentage values (handle strings like "8%" or "8")
-          const parsePercent = (value: any): number => {
-            if (typeof value === 'number') return value;
-            if (typeof value === 'string') {
-              const cleaned = value.replace('%', '').trim();
-              const parsed = parseFloat(cleaned);
-              return isNaN(parsed) ? 0 : parsed;
-            }
-            return 0;
-          };
-          
           const targetPercent = parsePercent(rec.targetPricePercent);
           const stopPercent = parsePercent(rec.stopLossPercent);
-          
-          // Validate percentage ranges (reasonable swing trade bounds)
           if (targetPercent <= 0 || targetPercent > 50 || stopPercent <= 0 || stopPercent > 20) {
             console.warn(`[SWING TRADE] Invalid percentages for ${rec.symbol}: target=${targetPercent}%, stop=${stopPercent}%`);
             return null;
           }
-          
           const currentPrice = quote.price;
-          // Entry price = current market price (buy now)
           const entryPrice = currentPrice;
-          // Target = current price + percentage gain
           const targetPrice = currentPrice * (1 + targetPercent / 100);
-          // Stop loss = current price - percentage loss
           const stopLoss = currentPrice * (1 - stopPercent / 100);
-          
           return {
             symbol: rec.symbol,
             volatility: rec.volatility,
@@ -165,17 +165,14 @@ Focus on stocks with HIGH volatility and strong momentum that are at good techni
             stopLoss,
             timeframe: rec.timeframe,
             reason: rec.reason,
-            riskLevel: rec.riskLevel
+            riskLevel: rec.riskLevel,
           } as SwingTradeRecommendation;
-        } catch (error) {
-          console.error(`Error fetching price for ${rec.symbol}:`, error);
-          return null;
-        }
-      })
-    );
-    
-    // Filter out null results (where we couldn't get prices)
-    return recommendationsWithPrices.filter((rec): rec is SwingTradeRecommendation => rec !== null);
+        })
+      );
+      for (const r of chunkResults) if (r) out.push(r);
+      if (i + PRICE_CONCURRENCY < validatedRecommendations.length) await delay(PRICE_BATCH_DELAY_MS);
+    }
+    return out;
   } catch (error) {
     console.error('Error analyzing swing trades:', error);
     return [];
