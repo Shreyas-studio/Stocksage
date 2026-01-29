@@ -239,11 +239,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Protected: Analyze swing trades
-  app.post("/api/analysis/swing-trades", isAuthenticated, async (req, res) => {
+  app.post("/api/analysis/swing-trades", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
       const marketCap = req.body.marketCap;
       const recommendations = await analyzeSwingTrades(marketCap);
-
+      await storage.saveAnalysisResult(userId, "swing_trade", recommendations);
+      await storage.addAnalysisHistoryEntry(userId, "swing_trade", recommendations);
       res.json({ recommendations });
     } catch (error) {
       console.error("Error analyzing swing trades:", error);
@@ -251,16 +253,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Protected: Analyze multibaggers
-  app.post("/api/analysis/multibaggers", isAuthenticated, async (req, res) => {
+  // Protected: Get last saved swing trade analysis
+  app.get("/api/analysis/swing-trades/last", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
+      const data = await storage.getLastAnalysisResult(userId, "swing_trade");
+      res.json({ recommendations: Array.isArray(data) ? data : [] });
+    } catch (error) {
+      console.error("Error fetching last swing trades:", error);
+      res.status(500).json({ error: "Failed to fetch last swing trades" });
+    }
+  });
+
+  // Protected: Analyze multibaggers
+  app.post("/api/analysis/multibaggers", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
       const marketCap = req.body.marketCap;
       const recommendations = await analyzeMultibaggers(marketCap);
-
+      await storage.saveAnalysisResult(userId, "multibagger", recommendations);
+      await storage.addAnalysisHistoryEntry(userId, "multibagger", recommendations);
       res.json({ recommendations });
     } catch (error) {
       console.error("Error analyzing multibaggers:", error);
       res.status(500).json({ error: "Failed to analyze multibaggers" });
+    }
+  });
+
+  // Protected: Get last saved multibagger analysis
+  app.get("/api/analysis/multibaggers/last", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const data = await storage.getLastAnalysisResult(userId, "multibagger");
+      res.json({ recommendations: Array.isArray(data) ? data : [] });
+    } catch (error) {
+      console.error("Error fetching last multibaggers:", error);
+      res.status(500).json({ error: "Failed to fetch last multibaggers" });
+    }
+  });
+
+  // Protected: Get analysis history (past suggestions by date/time and type)
+  app.get("/api/analysis/history", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const type = req.query.type as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+      const history = await storage.getAnalysisHistory(userId, { type, limit });
+      res.json({ history });
+    } catch (error) {
+      console.error("Error fetching analysis history:", error);
+      res.status(500).json({ error: "Failed to fetch analysis history" });
     }
   });
 
@@ -393,6 +435,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Protected: Get AI options recommendations
   app.get("/api/options/recommendations", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
       const budget = req.query.budget ? parseInt(req.query.budget as string) : undefined;
       const riskTolerance = req.query.riskTolerance as 'conservative' | 'moderate' | 'aggressive' | undefined;
       const strategyPreference = req.query.strategyPreference as string | undefined;
@@ -402,11 +445,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         riskTolerance,
         strategyPreference
       );
-
+      await storage.saveAnalysisResult(userId, "options_recommendations", recommendations);
+      await storage.addAnalysisHistoryEntry(userId, "options_recommendations", recommendations);
       res.json({ recommendations });
     } catch (error) {
       console.error("Error generating options recommendations:", error);
       res.status(500).json({ error: "Failed to generate options recommendations" });
+    }
+  });
+
+  // Protected: Get last saved options recommendations
+  app.get("/api/options/recommendations/last", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const data = await storage.getLastAnalysisResult(userId, "options_recommendations");
+      res.json({ recommendations: Array.isArray(data) ? data : [] });
+    } catch (error) {
+      console.error("Error fetching last options recommendations:", error);
+      res.status(500).json({ error: "Failed to fetch last options recommendations" });
     }
   });
 
